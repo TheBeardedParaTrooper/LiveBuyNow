@@ -26,7 +26,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const idx = await import('./providers/index');
       const adapter = await idx.getAdapter(provider || order.provider);
       if (adapter && adapter.handleCallback) {
-        const handled = await adapter.handleCallback(parsed);
+        // pass headers to allow adapter to verify signature
+        const handled = await adapter.handleCallback(parsed, req.headers || {});
         return res.status(200).json({ success: true, handled });
       }
     } catch (err) {

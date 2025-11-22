@@ -124,6 +124,24 @@ Provider-specific notes
 
 All real provider integrations will require you to register with the provider to obtain API credentials and a webhook URL. Keep credentials in environment variables and never expose them to the browser.
 
+Example: verifying webhook signatures (developer notes)
+
+1. Providers will POST callbacks to `/api/mobile/callback` with a JSON body containing at least `{ provider_tx_id, status }` where `status` is `success` or `failed`.
+2. If you set `MOBILE_*_CALLBACK_SECRET` in your environment, the adapter will attempt to verify a signature included in headers such as `x-provider-signature` or `x-signature`. The HMAC algorithm used in this scaffold is HMAC-SHA256 over the raw JSON body (hex digest). Example (bash):
+
+```bash
+BODY='{"provider_tx_id":"abc123","status":"success"}'
+SECRET='your_callback_secret'
+SIGNATURE=$(printf "%s" "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')
+
+curl -X POST http://localhost:5173/api/mobile/callback \
+	-H "Content-Type: application/json" \
+	-H "x-provider-signature: $SIGNATURE" \
+	-d "$BODY"
+```
+
+This will simulate a provider callback and the server will verify the HMAC if the secret is set. In production, use the provider's documented signature method and header.
+
 
 
 
