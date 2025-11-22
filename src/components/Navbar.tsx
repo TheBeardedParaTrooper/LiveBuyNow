@@ -3,7 +3,7 @@ import { ShoppingCart, User, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/contexts/CartContext';
-import { supabase } from '@/integrations/supabase/client';
+import CartDrawer from '@/components/CartDrawer';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -14,12 +14,14 @@ import {
 
 const Navbar = () => {
   const { user } = useAuth();
-  const { cartCount } = useCart();
+  const { cartCount, openCart } = useCart();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    // Remove token and reload
+    if (typeof window !== 'undefined') localStorage.removeItem('lbn_token');
     navigate('/');
+    window.location.reload();
   };
 
   return (
@@ -36,7 +38,7 @@ const Navbar = () => {
             variant="ghost"
             size="icon"
             className="relative"
-            onClick={() => navigate('/cart')}
+            onClick={() => openCart()}
           >
             <ShoppingCart className="h-5 w-5" />
             {cartCount > 0 && (
@@ -48,6 +50,7 @@ const Navbar = () => {
               </Badge>
             )}
           </Button>
+          <CartDrawer />
 
           {user ? (
             <DropdownMenu>

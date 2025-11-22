@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import Navbar from '@/components/Navbar';
 import ProductCard from '@/components/ProductCard';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import heroBanner from '@/assets/hero-banner.jpg';
 import headphonesImg from '@/assets/headphones.jpg';
@@ -24,22 +24,25 @@ interface Product {
 const Index = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<{id:string;name:string}[]>([]);
+  const [filters, setFilters] = useState({ category: '', minPrice: 0, maxPrice: 0, q: '' });
 
   useEffect(() => {
+    fetchCategories();
     fetchProducts();
   }, []);
 
   const fetchProducts = async () => {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('is_active', true)
-      .order('created_at', { ascending: false });
+    try {
+      const params = new URLSearchParams();
+      if (filters.category) params.set('category', filters.category);
+      if (filters.minPrice) params.set('min_price', String(filters.minPrice));
+      if (filters.maxPrice) params.set('max_price', String(filters.maxPrice));
+      if (filters.q) params.set('q', filters.q);
 
-    if (error) {
-      console.error('Error fetching products:', error);
-    } else {
-      // Map generated images to products
+      const res = await fetch(`/api/products?${params.toString()}`);
+      const data = await res.json();
+
       const imageMap: Record<string, string> = {
         'premium-wireless-headphones': headphonesImg,
         'smart-led-tv-43': smartTvImg,
@@ -48,14 +51,32 @@ const Index = () => {
         'premium-coffee-beans-1kg': coffeeBeansImg,
       };
 
-      const productsWithImages = data.map((product) => ({
+      const productsWithImages = data.map((product: any) => ({
         ...product,
         image_url: imageMap[product.slug] || product.image_url,
       }));
 
       setProducts(productsWithImages);
+    } catch (err) {
+      console.error('Error fetching products:', err);
     }
     setLoading(false);
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch('/api/categories');
+      const data = await res.json();
+      setCategories(data || []);
+    } catch (err) {
+      console.error('Error fetching categories', err);
+    }
+  };
+
+  const applyFilters = (newFilters: any) => {
+    setFilters({ ...filters, ...newFilters });
+    setLoading(true);
+    setTimeout(() => fetchProducts(), 0);
   };
 
   return (
@@ -87,7 +108,43 @@ const Index = () => {
 
       {/* Products Section */}
       <section className="container mx-auto px-4 py-16">
-        <h2 className="text-3xl font-bold mb-8">Featured Products</h2>
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-3xl font-bold">Featured Products</h2>
+          <div className="flex gap-3 items-center">
+            <Input
+              aria-label="Search products"
+              placeholder="Search..."
+              value={filters.q}
+              onChange={(e: any) => applyFilters({ q: e.target.value })}
+              className="max-w-xs"
+            />
+            <select
+              aria-label="Filter by category"
+              value={filters.category}
+              onChange={(e) => applyFilters({ category: e.target.value })}
+              className="select select-sm"
+            >
+              <option value="">All Categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <Input
+              type="number"
+              placeholder="Min"
+              value={filters.minPrice || ''}
+              onChange={(e: any) => applyFilters({ minPrice: Number(e.target.value || 0) })}
+              className="w-20"
+            />
+            <Input
+              type="number"
+              placeholder="Max"
+              value={filters.maxPrice || ''}
+              onChange={(e: any) => applyFilters({ maxPrice: Number(e.target.value || 0) })}
+              className="w-20"
+            />
+          </div>
+        </div>
         
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

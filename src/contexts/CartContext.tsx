@@ -1,7 +1,17 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+
+// A simple guest token generator stored in localStorage
+const GUEST_KEY = 'lbn_guest_token';
+function getGuestToken() {
+  let t = localStorage.getItem(GUEST_KEY);
+  if (!t) {
+    t = `g_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+    localStorage.setItem(GUEST_KEY, t);
+  }
+  return t;
+}
 
 interface CartItem {
   id: string;
@@ -22,6 +32,9 @@ interface CartContextType {
   removeFromCart: (itemId: string) => Promise<void>;
   clearCart: () => Promise<void>;
   refreshCart: () => Promise<void>;
+  openCart: () => void;
+  closeCart: () => void;
+  isCartOpen: boolean;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -30,23 +43,25 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const { user } = useAuth();
 
+  const guestToken = typeof window !== 'undefined' ? getGuestToken() : null;
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
   const refreshCart = async () => {
-    if (!user) {
-      setCartItems([]);
-      return;
+    try {
+      const params = user ? `?user_id=${user.id}` : `?guest_token=${guestToken}`;
+      const res = await fetch(`/api/cart${params}`);
+      const data = await res.json();
+      setCartItems(
+        data.map((d: any) => ({
+          id: d.id,
+          product_id: d.product_id,
+          quantity: d.quantity,
+          products: { name: d.name, price: Number(d.price), image_url: d.image_url },
+        })) || []
+      );
+    } catch (err) {
+      console.error('Error fetching cart:', err);
     }
-
-    const { data, error } = await supabase
-      .from('cart_items')
-      .select('*, products(name, price, image_url)')
-      .eq('user_id', user.id);
-
-    if (error) {
-      console.error('Error fetching cart:', error);
-      return;
-    }
-
-    setCartItems(data || []);
   };
 
   useEffect(() => {
@@ -54,30 +69,23 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   }, [user]);
 
   const addToCart = async (productId: string, quantity = 1) => {
-    if (!user) {
-      toast.error('Please sign in to add items to cart');
-      return;
+    try {
+      const payload: any = { product_id: productId, quantity };
+      if (user) payload.user_id = user.id;
+      else payload.guest_token = guestToken;
+
+      const res = await fetch('/api/cart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Failed to add to cart');
+      toast.success('Added to cart!');
+      await refreshCart();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to add to cart');
     }
-
-    const existingItem = cartItems.find(item => item.product_id === productId);
-
-    if (existingItem) {
-      await updateQuantity(existingItem.id, existingItem.quantity + quantity);
-      return;
-    }
-
-    const { error } = await supabase
-      .from('cart_items')
-      .insert({ product_id: productId, quantity, user_id: user.id });
-
-    if (error) {
-      toast.error('Failed to add to cart');
-      console.error(error);
-      return;
-    }
-
-    toast.success('Added to cart!');
-    refreshCart();
   };
 
   const updateQuantity = async (itemId: string, quantity: number) => {
@@ -85,49 +93,61 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       await removeFromCart(itemId);
       return;
     }
-
-    const { error } = await supabase
-      .from('cart_items')
-      .update({ quantity })
-      .eq('id', itemId);
-
-    if (error) {
-      toast.error('Failed to update quantity');
-      return;
+    try {
+      const res = await fetch('/api/cart', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: itemId, quantity }),
+      });
+      if (!res.ok) throw new Error('Failed to update quantity');
+      await refreshCart();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to update quantity');
     }
-
-    refreshCart();
   };
 
   const removeFromCart = async (itemId: string) => {
-    const { error } = await supabase
-      .from('cart_items')
-      .delete()
-      .eq('id', itemId);
-
-    if (error) {
-      toast.error('Failed to remove item');
-      return;
+    try {
+      const res = await fetch('/api/cart', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: itemId }),
+      });
+      if (!res.ok) throw new Error('Failed to remove item');
+      toast.success('Item removed');
+      await refreshCart();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to remove item');
     }
-
-    toast.success('Item removed');
-    refreshCart();
   };
 
   const clearCart = async () => {
-    if (!user) return;
+    try {
+      if (!user) {
+        // clear guest cart
+        const res = await fetch('/api/cart', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guest_token: guestToken }),
+        });
+        if (!res.ok) throw new Error('Failed to clear cart');
+        setCartItems([]);
+        return;
+      }
 
-    const { error } = await supabase
-      .from('cart_items')
-      .delete()
-      .eq('user_id', user.id);
-
-    if (error) {
-      toast.error('Failed to clear cart');
-      return;
+      const res = await fetch('/api/cart', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.id }),
+      });
+      if (!res.ok) throw new Error('Failed to clear cart');
+      setCartItems([]);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Failed to clear cart');
     }
-
-    setCartItems([]);
   };
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -142,6 +162,9 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         removeFromCart,
         clearCart,
         refreshCart,
+        openCart: () => setIsCartOpen(true),
+        closeCart: () => setIsCartOpen(false),
+        isCartOpen,
       }}
     >
       {children}

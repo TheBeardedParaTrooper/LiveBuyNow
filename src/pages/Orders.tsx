@@ -4,7 +4,6 @@ import Navbar from '@/components/Navbar';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -38,15 +37,12 @@ const Orders = () => {
   }, [user, navigate]);
 
   const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*, order_items(*)')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching orders:', error);
-    } else {
+    try {
+      const res = await fetch(`/api/orders?user_id=${user?.id}`);
+      const data = await res.json();
       setOrders(data || []);
+    } catch (err) {
+      console.error('Error fetching orders:', err);
     }
     setLoading(false);
   };

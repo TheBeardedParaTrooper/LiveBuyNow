@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,43 +25,64 @@ const Auth = () => {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-        emailRedirectTo: `${window.location.origin}/`,
-      },
-    });
-
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success('Account created! You can now sign in.');
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, full_name: fullName }),
+      });
+      const data = await res.json();
+      setLoading(false);
+      if (!res.ok) {
+        toast.error(data?.error || 'Failed to create account');
+        return;
+      }
+      toast.success('Account created! Please sign in.');
+    } catch (err: any) {
+      setLoading(false);
+      console.error(err);
+      toast.error(err.message || 'Failed to create account');
     }
   };
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-    } else {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      setLoading(false);
+      if (!res.ok) {
+        toast.error(data?.error || 'Failed to sign in');
+        return;
+      }
+      // Store token
+      if (data.token) localStorage.setItem('lbn_token', data.token);
+      // If there is a guest cart, merge it into the user's cart
+      try {
+        const guestToken = localStorage.getItem('lbn_guest_token');
+        if (guestToken) {
+          await fetch('/api/cart/merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
+            body: JSON.stringify({ guest_token: guestToken, user_id: data.user.id }),
+          });
+          localStorage.removeItem('lbn_guest_token');
+        }
+      } catch (err) {
+        console.warn('Failed to merge guest cart', err);
+      }
       toast.success('Welcome back!');
       navigate('/');
+      window.location.reload();
+    } catch (err: any) {
+      setLoading(false);
+      console.error(err);
+      toast.error(err.message || 'Failed to sign in');
     }
   };
 

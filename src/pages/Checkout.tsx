@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import {
@@ -23,6 +22,7 @@ const Checkout = () => {
   const navigate = useNavigate();
   const { cartItems, clearCart } = useCart();
   const { user } = useAuth();
+  const guestToken = typeof window !== 'undefined' ? localStorage.getItem('lbn_guest_token') : null;
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     phoneNumber: '',
@@ -30,6 +30,36 @@ const Checkout = () => {
     notes: '',
     paymentMethod: 'mobile_money',
   });
+  const [provider, setProvider] = useState('tigo_pesa');
+  const [instructions, setInstructions] = useState<string | null>(null);
+  const [providerTxId, setProviderTxId] = useState<string | null>(null);
+  const [polling, setPolling] = useState(false);
+
+  useEffect(() => {
+    if (!polling || !providerTxId) return;
+    let stopped = false;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/mobile/status?provider_tx_id=${providerTxId}`);
+        const d = await res.json();
+        if (res.ok && d.payment_status === 'paid') {
+          stopped = true;
+          setPolling(false);
+          setInstructions(null);
+          setProviderTxId(null);
+          await clearCart();
+          toast.success('Payment confirmed. Thank you!');
+          navigate('/orders');
+        }
+      } catch (err) {
+        console.error('Polling error', err);
+      }
+    }, 4000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [polling, providerTxId, clearCart, navigate]);
 
   const total = cartItems.reduce(
     (sum, item) => sum + item.products.price * item.quantity,
@@ -53,47 +83,74 @@ const Checkout = () => {
     setLoading(true);
 
     try {
-      // Generate order number
-      const { data: orderNumberData } = await supabase.rpc(
-        'generate_order_number'
-      );
-
-      // Create order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
+      // If user selected card payment, create a Stripe Checkout session server-side
+      if (formData.paymentMethod === 'card') {
+        const payload = {
+          items: cartItems.map((item) => ({
+            product_id: item.product_id,
+            name: item.products.name,
+            price: item.products.price,
+            quantity: item.quantity,
+          })),
           user_id: user.id,
-          order_number: orderNumberData,
-          total_amount: total,
-          payment_method: formData.paymentMethod,
-          phone_number: formData.phoneNumber,
-          delivery_address: formData.deliveryAddress,
-          notes: formData.notes,
-        })
-        .select()
-        .single();
+          metadata: {
+            phone_number: formData.phoneNumber,
+            delivery_address: formData.deliveryAddress,
+            notes: formData.notes,
+          },
+        };
 
-      if (orderError) throw orderError;
+        const res = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
 
-      // Create order items
-      const orderItems = cartItems.map((item) => ({
-        order_id: order.id,
-        product_id: item.product_id,
-        product_name: item.products.name,
-        product_price: item.products.price,
-        quantity: item.quantity,
-        subtotal: item.products.price * item.quantity,
-      }));
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Failed to create checkout session');
 
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems);
+        // Redirect to Stripe Checkout
+        window.location.href = data.url;
+        return;
+      }
 
-      if (itemsError) throw itemsError;
+      // Create order server-side (mobile money or other non-card flows)
+      const payload: any = {
+        phone_number: formData.phoneNumber,
+        delivery_address: formData.deliveryAddress,
+        notes: formData.notes,
+        payment_method: formData.paymentMethod,
+      };
+      if (user) payload.user_id = user.id;
+      else payload.guest_token = guestToken;
 
-      // Clear cart
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to create order');
+
+      // If mobile money selected, initiate provider flow and show instructions
+      if (formData.paymentMethod === 'mobile_money') {
+        const initRes = await fetch('/api/mobile/initiate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: data.order_id, provider, phone_number: formData.phoneNumber }),
+        });
+        const initData = await initRes.json();
+        if (!initRes.ok) throw new Error(initData?.error || 'Failed to initiate mobile payment');
+
+        setInstructions(initData.instructions || null);
+        setProviderTxId(initData.provider_tx_id || null);
+        setPolling(true);
+        toast.success('Mobile-money payment initiated. Follow the instructions to complete payment.');
+        return; // keep user on the page while polling
+      }
+
+      // Clear cart on success for non-mobile-money flows
       await clearCart();
-
       toast.success('Order placed successfully!');
       navigate('/orders');
     } catch (error: any) {
@@ -126,7 +183,7 @@ const Checkout = () => {
                   <Input
                     id="phone"
                     type="tel"
-                    placeholder="+256 700 000 000"
+                      placeholder="+255 7xx xxx xxx"
                     value={formData.phoneNumber}
                     onChange={(e) =>
                       setFormData({ ...formData, phoneNumber: e.target.value })
@@ -178,12 +235,59 @@ const Checkout = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="mobile_money">
-                        Mobile Money (MTN/Airtel)
-                      </SelectItem>
+                      <SelectItem value="mobile_money">Mobile Money (Tanzania)</SelectItem>
+                      <SelectItem value="card">Pay with Card (Credit/Debit)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {formData.paymentMethod === 'mobile_money' && (
+                  <div className="mt-4 space-y-2">
+                    <Label>Select Mobile Money Provider</Label>
+                    <Select value={provider} onValueChange={(v: string) => setProvider(v)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tigo_pesa">Tigo Pesa</SelectItem>
+                        <SelectItem value="airtel_money">Airtel Money</SelectItem>
+                        <SelectItem value="vodacom">Vodacom / M-Pesa</SelectItem>
+                        <SelectItem value="halo_pesa">HaloPesa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {instructions && (
+                  <div className="mt-4 p-4 bg-surface rounded-md border">
+                    <h3 className="font-semibold">Payment Instructions</h3>
+                    <p className="text-sm mt-2">{instructions}</p>
+                    <div className="mt-3">
+                      <Button
+                        onClick={async () => {
+                          if (!providerTxId) return;
+                          try {
+                            const st = await fetch(`/api/mobile/status?provider_tx_id=${providerTxId}`);
+                            const d = await st.json();
+                            if (st.ok && d.payment_status === 'paid') {
+                              // payment confirmed: clear cart and redirect
+                              await clearCart();
+                              toast.success('Payment confirmed. Thank you!');
+                              navigate('/orders');
+                            } else {
+                              toast('Payment still pending. Please complete the transfer.');
+                            }
+                          } catch (err) {
+                            console.error(err);
+                            toast.error('Failed to check payment status');
+                          }
+                        }}
+                      >
+                        Check Payment Status
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </Card>
 
               <Button

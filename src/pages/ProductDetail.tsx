@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart, ArrowLeft } from 'lucide-react';
@@ -29,6 +28,7 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
   const { addToCart } = useCart();
 
   useEffect(() => {
@@ -36,15 +36,11 @@ const ProductDetail = () => {
   }, [slug]);
 
   const fetchProduct = async () => {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('slug', slug)
-      .single();
+    try {
+      const res = await fetch(`/api/product/${slug}`);
+      if (!res.ok) throw new Error('Failed to fetch product');
+      const data = await res.json();
 
-    if (error) {
-      console.error('Error fetching product:', error);
-    } else {
       const imageMap: Record<string, string> = {
         'premium-wireless-headphones': headphonesImg,
         'smart-led-tv-43': smartTvImg,
@@ -57,6 +53,8 @@ const ProductDetail = () => {
         ...data,
         image_url: imageMap[data.slug] || data.image_url,
       });
+    } catch (err) {
+      console.error('Error fetching product:', err);
     }
     setLoading(false);
   };
@@ -170,15 +168,34 @@ const ProductDetail = () => {
               </div>
             )}
 
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={() => addToCart(product.id)}
-              disabled={product.stock_quantity === 0}
-            >
-              <ShoppingCart className="mr-2 h-5 w-5" />
-              {product.stock_quantity === 0 ? 'Out of Stock' : 'Add to Cart'}
-            </Button>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <label className="font-medium">Quantity</label>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}
+                  >-</button>
+                  <span className="w-8 text-center">{selectedQuantity}</span>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => setSelectedQuantity(Math.min(product.stock_quantity || 9999, selectedQuantity + 1))}
+                    disabled={selectedQuantity >= (product.stock_quantity || 0)}
+                  >+</button>
+                </div>
+                <span className="text-sm text-muted-foreground ml-4">{product.stock_quantity} available</span>
+              </div>
+
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={() => addToCart(product.id, selectedQuantity)}
+                disabled={product.stock_quantity === 0}
+              >
+                <ShoppingCart className="mr-2 h-5 w-5" />
+                {product.stock_quantity === 0 ? 'Out of Stock' : 'Add to Cart'}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

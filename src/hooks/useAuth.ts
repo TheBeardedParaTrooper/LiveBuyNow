@@ -1,31 +1,44 @@
 import { useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+
+interface UserShape {
+  id: string;
+  email: string;
+  full_name?: string | null;
+  phone?: string | null;
+}
 
 export const useAuth = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<UserShape | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const t = typeof window !== 'undefined' ? localStorage.getItem('lbn_token') : null;
+    if (!t) {
       setLoading(false);
-    });
+      return;
+    }
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const fetchMe = async () => {
+      try {
+        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${t}` } });
+        if (!res.ok) {
+          localStorage.removeItem('lbn_token');
+          setLoading(false);
+          return;
+        }
+        const data = await res.json();
+        setUser(data.user);
+        setToken(t);
+      } catch (err) {
+        console.error('useAuth fetchMe error', err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    return () => subscription.unsubscribe();
+    fetchMe();
   }, []);
 
-  return { user, session, loading };
+  return { user, token, loading };
 };
