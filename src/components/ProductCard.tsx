@@ -1,16 +1,13 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { useCart } from '@/contexts/CartContext';
-import { Badge } from '@/components/ui/badge';
 
 interface ProductCardProps {
   id: string;
   name: string;
   slug: string;
   price: number;
-  compareAtPrice?: number;
   imageUrl?: string;
   stockQuantity: number;
 }
@@ -20,15 +17,10 @@ const ProductCard = ({
   name,
   slug,
   price,
-  compareAtPrice,
   imageUrl,
   stockQuantity,
 }: ProductCardProps) => {
-  const { addToCart } = useCart();
-  const discount = compareAtPrice
-    ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
-    : 0;
-
+  const navigate = useNavigate();
   return (
     <Card className="group overflow-hidden transition-all hover:shadow-card">
       <Link to={`/product/${slug}`}>
@@ -39,11 +31,6 @@ const ProductCard = ({
               alt={name}
               className="h-full w-full object-cover transition-transform group-hover:scale-105"
             />
-          )}
-          {discount > 0 && (
-            <Badge className="absolute right-2 top-2 bg-destructive">
-              -{discount}%
-            </Badge>
           )}
         </div>
       </Link>
@@ -57,22 +44,17 @@ const ProductCard = ({
 
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-bold text-foreground">
-            UGX {price.toLocaleString()}
+            TZS {price.toLocaleString()}
           </span>
-          {compareAtPrice && (
-            <span className="text-sm text-muted-foreground line-through">
-              UGX {compareAtPrice.toLocaleString()}
-            </span>
-          )}
         </div>
 
         <Button
           className="w-full"
-          onClick={() => addToCart(id)}
+          onClick={() => navigate(`/product/${slug}`)}
           disabled={stockQuantity === 0}
         >
           <ShoppingCart className="mr-2 h-4 w-4" />
-          {stockQuantity === 0 ? 'Out of Stock' : 'Add to Cart'}
+          {stockQuantity === 0 ? 'Out of Stock' : 'View Quotation'}
         </Button>
       </div>
     </Card>
