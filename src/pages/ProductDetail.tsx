@@ -37,9 +37,16 @@ const ProductDetail = () => {
 
   const fetchProduct = async () => {
     try {
-      const res = await fetch(`/api/product/${slug}`);
-      if (!res.ok) throw new Error('Failed to fetch product');
-      const data = await res.json();
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('slug', slug)
+        .eq('is_active', true)
+        .single();
+
+      if (error) throw error;
 
       const imageMap: Record<string, string> = {
         'premium-wireless-headphones': headphonesImg,

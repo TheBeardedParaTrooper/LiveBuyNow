@@ -1,1 +1,7 @@
 project_id = "zxsucgarocjhfoisdapa"
+
+[functions.mobile-payment-initiate]
+verify_jwt = true
+
+[functions.mobile-payment-callback]
+verify_jwt = false
