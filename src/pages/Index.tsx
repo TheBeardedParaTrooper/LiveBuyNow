@@ -34,14 +34,29 @@ const Index = () => {
 
   const fetchProducts = async () => {
     try {
-      const params = new URLSearchParams();
-      if (filters.category) params.set('category', filters.category);
-      if (filters.minPrice) params.set('min_price', String(filters.minPrice));
-      if (filters.maxPrice) params.set('max_price', String(filters.maxPrice));
-      if (filters.q) params.set('q', filters.q);
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      let query = supabase
+        .from('products')
+        .select('*')
+        .eq('is_active', true);
 
-      const res = await fetch(`/api/products?${params.toString()}`);
-      const data = await res.json();
+      if (filters.category) {
+        query = query.eq('category_id', filters.category);
+      }
+      if (filters.minPrice) {
+        query = query.gte('price', filters.minPrice);
+      }
+      if (filters.maxPrice) {
+        query = query.lte('price', filters.maxPrice);
+      }
+      if (filters.q) {
+        query = query.or(`name.ilike.%${filters.q}%,description.ilike.%${filters.q}%`);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) throw error;
 
       const imageMap: Record<string, string> = {
         'premium-wireless-headphones': headphonesImg,
@@ -51,7 +66,7 @@ const Index = () => {
         'premium-coffee-beans-1kg': coffeeBeansImg,
       };
 
-      const productsWithImages = data.map((product: any) => ({
+      const productsWithImages = (data || []).map((product: any) => ({
         ...product,
         image_url: imageMap[product.slug] || product.image_url,
       }));
@@ -65,8 +80,9 @@ const Index = () => {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch('/api/categories');
-      const data = await res.json();
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data, error } = await supabase.from('categories').select('*');
+      if (error) throw error;
       setCategories(data || []);
     } catch (err) {
       console.error('Error fetching categories', err);
