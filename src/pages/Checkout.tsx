@@ -30,7 +30,7 @@ const Checkout = () => {
     notes: '',
     paymentMethod: 'mobile_money',
   });
-  const [provider, setProvider] = useState('tigo_pesa');
+  const [provider, setProvider] = useState('tigopesa');
   const [instructions, setInstructions] = useState<string | null>(null);
   const [providerTxId, setProviderTxId] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
@@ -134,19 +134,33 @@ const Checkout = () => {
 
       // If mobile money selected, initiate provider flow and show instructions
       if (formData.paymentMethod === 'mobile_money') {
-        const initRes = await fetch('/api/mobile/initiate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ order_id: data.order_id, provider, phone_number: formData.phoneNumber }),
-        });
-        const initData = await initRes.json();
-        if (!initRes.ok) throw new Error(initData?.error || 'Failed to initiate mobile payment');
+        const { supabase } = await import('@/integrations/supabase/client');
+        
+        const { data: paymentData, error: paymentError } = await supabase.functions.invoke(
+          'mobile-payment-initiate',
+          {
+            body: {
+              orderId: data.order_id,
+              amount: total,
+              phoneNumber: formData.phoneNumber,
+              provider,
+            },
+          }
+        );
 
-        setInstructions(initData.instructions || null);
-        setProviderTxId(initData.provider_tx_id || null);
-        setPolling(true);
-        toast.success('Mobile-money payment initiated. Follow the instructions to complete payment.');
-        return; // keep user on the page while polling
+        if (paymentError) {
+          throw new Error('Failed to initiate mobile payment');
+        }
+
+        setInstructions(paymentData.message || 'Please check your phone to complete the payment');
+        setProviderTxId(paymentData.reference || null);
+        toast.success('Payment initiated. Check your phone to complete payment.');
+        
+        // For now, navigate to orders page after showing message
+        setTimeout(() => {
+          navigate('/orders');
+        }, 3000);
+        return;
       }
 
       // Clear cart on success for non-mobile-money flows
@@ -249,10 +263,10 @@ const Checkout = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="tigo_pesa">Tigo Pesa</SelectItem>
-                        <SelectItem value="airtel_money">Airtel Money</SelectItem>
-                        <SelectItem value="vodacom">Vodacom / M-Pesa</SelectItem>
-                        <SelectItem value="halo_pesa">HaloPesa</SelectItem>
+                        <SelectItem value="tigopesa">Tigo Pesa</SelectItem>
+                        <SelectItem value="airtelmoney">Airtel Money</SelectItem>
+                        <SelectItem value="mpesa">M-Pesa (Vodacom)</SelectItem>
+                        <SelectItem value="halopesa">Halo Pesa</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -318,14 +332,14 @@ const Checkout = () => {
                       {item.products.name} × {item.quantity}
                     </span>
                     <span className="font-semibold">
-                      UGX {(item.products.price * item.quantity).toLocaleString()}
+                      TZS {(item.products.price * item.quantity).toLocaleString()}
                     </span>
                   </div>
                 ))}
                 <div className="border-t pt-3">
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total</span>
-                    <span>UGX {total.toLocaleString()}</span>
+                    <span>TZS {total.toLocaleString()}</span>
                   </div>
                 </div>
               </div>
