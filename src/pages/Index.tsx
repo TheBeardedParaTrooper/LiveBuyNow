@@ -181,7 +181,6 @@ const Index = () => {
                 name={product.name}
                 slug={product.slug}
                 price={product.price}
-                compareAtPrice={product.compare_at_price || undefined}
                 imageUrl={product.image_url || undefined}
                 stockQuantity={product.stock_quantity}
               />

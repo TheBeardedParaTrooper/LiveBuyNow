@@ -94,10 +94,6 @@ const ProductDetail = () => {
     );
   }
 
-  const discount = product.compare_at_price
-    ? Math.round(((product.compare_at_price - product.price) / product.compare_at_price) * 100)
-    : 0;
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -120,11 +116,6 @@ const ProductDetail = () => {
                 className="h-full w-full object-cover"
               />
             )}
-            {discount > 0 && (
-              <Badge className="absolute right-4 top-4 bg-destructive text-lg px-3 py-1">
-                -{discount}%
-              </Badge>
-            )}
           </div>
 
           <div className="space-y-6">
@@ -141,13 +132,8 @@ const ProductDetail = () => {
 
             <div className="flex items-baseline gap-3">
               <span className="text-4xl font-bold text-foreground">
-                UGX {product.price.toLocaleString()}
+                TZS {product.price.toLocaleString()}
               </span>
-              {product.compare_at_price && (
-                <span className="text-xl text-muted-foreground line-through">
-                  UGX {product.compare_at_price.toLocaleString()}
-                </span>
-              )}
             </div>
 
             {product.description && (
@@ -193,7 +179,7 @@ const ProductDetail = () => {
                 disabled={product.stock_quantity === 0}
               >
                 <ShoppingCart className="mr-2 h-5 w-5" />
-                {product.stock_quantity === 0 ? 'Out of Stock' : 'Add to Cart'}
+                {product.stock_quantity === 0 ? 'Out of Stock' : 'View Quotation'}
               </Button>
             </div>
           </div>
