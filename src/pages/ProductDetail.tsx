@@ -36,6 +36,11 @@ const ProductDetail = () => {
   }, [slug]);
 
   const fetchProduct = async () => {
+    if (!slug) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const { supabase } = await import('@/integrations/supabase/client');
       
@@ -46,7 +51,17 @@ const ProductDetail = () => {
         .eq('is_active', true)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching product:', error);
+        setLoading(false);
+        return;
+      }
+
+      if (!data) {
+        console.log('No product found with slug:', slug);
+        setLoading(false);
+        return;
+      }
 
       const imageMap: Record<string, string> = {
         'premium-wireless-headphones': headphonesImg,
@@ -58,12 +73,13 @@ const ProductDetail = () => {
 
       setProduct({
         ...data,
-        image_url: imageMap[data.slug] || data.image_url,
+        image_url: imageMap[data.slug] || data.image_url || '',
       });
     } catch (err) {
-      console.error('Error fetching product:', err);
+      console.error('Error in fetchProduct:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   if (loading) {

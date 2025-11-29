@@ -1,0 +1,89 @@
+-- Drop existing tables if they exist
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS cart;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS users;
+
+-- Create users table
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(255),
+  phone VARCHAR(50),
+  role VARCHAR(20) DEFAULT 'user',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create products table
+CREATE TABLE products (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  price DECIMAL(10, 2) NOT NULL,
+  stock_quantity INTEGER NOT NULL DEFAULT 0,
+  image_url VARCHAR(255),
+  category VARCHAR(100),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create cart table
+CREATE TABLE cart (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  product_id INTEGER REFERENCES products(id),
+  quantity INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create orders table
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id),
+  total_amount DECIMAL(10, 2) NOT NULL,
+  status VARCHAR(50) DEFAULT 'pending',
+  shipping_address TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create order_items table
+CREATE TABLE order_items (
+  id SERIAL PRIMARY KEY,
+  order_id INTEGER REFERENCES orders(id),
+  product_id INTEGER REFERENCES products(id),
+  quantity INTEGER NOT NULL,
+  price DECIMAL(10, 2) NOT NULL
+);
+
+-- Insert sample admin user (password: admin123)
+INSERT INTO users (email, password_hash, full_name, role) 
+VALUES ('admin@example.com', '$2b$10$XlzW9Lq3qJq6q8p8q9r0t.y9v8z1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P7', 'Admin User', 'admin');
+
+-- Insert sample products
+INSERT INTO products (name, description, price, stock_quantity, category, image_url) VALUES
+('Wireless Headphones', 'High-quality wireless headphones with noise cancellation', 99.99, 50, 'Electronics', '/images/headphones.jpg'),
+('Smartphone', 'Latest smartphone with advanced features', 699.99, 30, 'Electronics', '/images/smartphone.jpg'),
+('Laptop Backpack', 'Durable backpack for laptops up to 15.6 inches', 49.99, 100, 'Accessories', '/images/backpack.jpg'),
+('Coffee Maker', 'Programmable coffee maker with thermal carafe', 79.99, 25, 'Appliances', '/images/coffee-maker.jpg'),
+('Fitness Tracker', 'Waterproof fitness tracker with heart rate monitor', 89.99, 75, 'Wearables', '/images/fitness-tracker.jpg');
+
+-- Create a function to update the updated_at timestamp
+CREATE OR REPLACE FUNCTION update_modified_column() 
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW; 
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create triggers to update timestamps
+CREATE TRIGGER update_users_modtime
+BEFORE UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+
+CREATE TRIGGER update_products_modtime
+BEFORE UPDATE ON products
+FOR EACH ROW EXECUTE FUNCTION update_modified_column();
